@@ -66,7 +66,7 @@
       },
       {
         "command": "organizeImportsAll.dryRun",
-        "title": "Organize imports on all files (Dry Run)"
+        "title": "Organize imports on all files (dry-run)"
       }
     ],
     "menus": {

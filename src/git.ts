@@ -67,9 +67,71 @@ export async function isGitRepository(cwd: string): Promise<boolean> {
   return res.exitCode === 0 && res.stdout.toString('utf8').trim() === 'true';
 }
 
+async function getGitTopLevel(cwd: string): Promise<string | null> {
+  const res = await runGit(['rev-parse', '--show-toplevel'], cwd);
+  if (res.exitCode !== 0) {
+    return null;
+  }
+  const topLevel = res.stdout.toString('utf8').trim();
+  if (!topLevel) {
+    return null;
+  }
+  return path.resolve(cwd, topLevel);
+}
+
+function isWithinDirectory(parentDir: string, candidatePath: string): boolean {
+  const rel = path.relative(parentDir, candidatePath);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+function findNearestGitRoot(
+  filePath: string,
+  stopAtDir: string,
+  fallbackRoot: string | null,
+  dirCache: Map<string, string | null>
+): string | null {
+  const resolvedStop = path.resolve(stopAtDir);
+  let current = path.dirname(path.resolve(filePath));
+  const visited: string[] = [];
+
+  while (isWithinDirectory(resolvedStop, current)) {
+    if (dirCache.has(current)) {
+      const cached = dirCache.get(current) ?? null;
+      for (const dir of visited) {
+        dirCache.set(dir, cached);
+      }
+      return cached;
+    }
+
+    if (fs.existsSync(path.join(current, '.git'))) {
+      dirCache.set(current, current);
+      for (const dir of visited) {
+        dirCache.set(dir, current);
+      }
+      return current;
+    }
+
+    visited.push(current);
+    if (current === resolvedStop) {
+      break;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+
+  for (const dir of visited) {
+    dirCache.set(dir, fallbackRoot);
+  }
+  return fallbackRoot;
+}
+
 /**
  * Filters out paths ignored by `.gitignore` / Git exclude rules using
- * `git check-ignore -z --stdin`. Keeps all paths if `cwd` is not a Git repo.
+ * `git check-ignore -z --stdin`, grouping files by their nearest Git root so
+ * nested repositories, parent workspaces, and submodules are handled safely.
  */
 export async function filterGitIgnoredFiles(
   cwd: string,
@@ -79,31 +141,50 @@ export async function filterGitIgnoredFiles(
     return { kept: [], ignoredCount: 0 };
   }
 
-  const relPaths: string[] = [];
+  const fallbackRoot = await getGitTopLevel(cwd);
+  const dirCache = new Map<string, string | null>();
+  const buckets = new Map<string, string[]>();
+
   for (const filePath of filePaths) {
-    const rel = path.relative(cwd, filePath);
-    if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
-      relPaths.push(rel);
+    const repoRoot = findNearestGitRoot(filePath, cwd, fallbackRoot, dirCache);
+    if (!repoRoot) {
+      continue;
+    }
+    let group = buckets.get(repoRoot);
+    if (!group) {
+      group = [];
+      buckets.set(repoRoot, group);
+    }
+    group.push(filePath);
+  }
+
+  const ignoredSet = new Set<string>();
+
+  for (const [repoRoot, groupFiles] of buckets.entries()) {
+    const relPaths: string[] = [];
+    for (const filePath of groupFiles) {
+      const rel = path.relative(repoRoot, filePath);
+      if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+        relPaths.push(rel);
+      }
+    }
+
+    if (relPaths.length === 0) {
+      continue;
+    }
+
+    const stdinBuffer = Buffer.from(relPaths.join('\0') + '\0', 'utf8');
+    const res = await runGit(['check-ignore', '-z', '--stdin'], repoRoot, stdinBuffer);
+    if (res.exitCode !== 0) {
+      continue;
+    }
+
+    for (const rel of res.stdout.toString('utf8').split('\0')) {
+      if (rel) {
+        ignoredSet.add(path.resolve(repoRoot, rel));
+      }
     }
   }
-
-  if (relPaths.length === 0) {
-    return { kept: [...filePaths], ignoredCount: 0 };
-  }
-
-  const stdinBuffer = Buffer.from(relPaths.join('\0') + '\0', 'utf8');
-  const res = await runGit(['check-ignore', '-z', '--stdin'], cwd, stdinBuffer);
-
-  // Exit code 0 means at least one path matched an ignore rule.
-  // Exit code 1 means nothing was ignored; 128/null means not a Git repo/error.
-  if (res.exitCode !== 0) {
-    return { kept: [...filePaths], ignoredCount: 0 };
-  }
-
-  const ignoredEntries = res.stdout.toString('utf8').split('\0').filter(Boolean);
-  const ignoredSet = new Set<string>(
-    ignoredEntries.map((rel) => path.resolve(cwd, rel))
-  );
 
   const kept = filePaths.filter((filePath) => !ignoredSet.has(path.resolve(filePath)));
   return {

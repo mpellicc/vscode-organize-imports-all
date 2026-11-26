@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  applyOffsetEdits,
   buildExcludeGlob,
   expandExcludePattern,
   extractEnabledExcludePatterns,
   formatFileStatusLine,
   normalizeIgnoredFolderPatterns,
   resolveActionKindValue,
+  wouldOffsetEditsChangeText,
 } from '../src/glob';
 
 test('extractEnabledExcludePatterns keeps only entries strictly equal to true', () => {
@@ -192,4 +194,81 @@ test('resolveActionKindValue maps known action modes and falls back to organizeI
     kindValue: 'source.organizeImports',
     label: 'Organize Imports',
   });
+});
+
+test('applyOffsetEdits and wouldOffsetEditsChangeText handle no-ops, split delete+insert pairs, ordering, and overlaps', () => {
+  const sample = "import { a } from './a';\nimport { b } from './b';\n\nconsole.log(a, b);\n";
+
+  assert.equal(wouldOffsetEditsChangeText(sample, []), false);
+
+  assert.equal(
+    wouldOffsetEditsChangeText(sample, [
+      { startOffset: 0, endOffset: 24, newText: "import { a } from './a';" },
+    ]),
+    false
+  );
+
+  // Split [delete, insert] pair reconstructing the exact same text (in both orders)
+  const importsBlock = "import { a } from './a';\nimport { b } from './b';\n";
+  const blockLen = importsBlock.length;
+  assert.equal(
+    wouldOffsetEditsChangeText(sample, [
+      { startOffset: 0, endOffset: blockLen, newText: '' },
+      { startOffset: 0, endOffset: 0, newText: importsBlock },
+    ]),
+    false
+  );
+  assert.equal(
+    wouldOffsetEditsChangeText(sample, [
+      { startOffset: 0, endOffset: 0, newText: importsBlock },
+      { startOffset: 0, endOffset: blockLen, newText: '' },
+    ]),
+    false
+  );
+
+  // Multiple zero-width inserts at offset 0 preserve input array order
+  assert.equal(
+    applyOffsetEdits('world', [
+      { startOffset: 0, endOffset: 0, newText: 'hello ' },
+      { startOffset: 0, endOffset: 0, newText: 'brave ' },
+    ]),
+    'hello brave world'
+  );
+
+  // Real import reorder changes text
+  const reordered = "import { b } from './b';\nimport { a } from './a';\n";
+  assert.equal(
+    wouldOffsetEditsChangeText(sample, [
+      { startOffset: 0, endOffset: blockLen, newText: reordered },
+    ]),
+    true
+  );
+  assert.equal(
+    applyOffsetEdits(sample, [{ startOffset: 0, endOffset: blockLen, newText: reordered }]),
+    `${reordered}\nconsole.log(a, b);\n`
+  );
+
+  // Unused import deletion changes text
+  assert.equal(
+    wouldOffsetEditsChangeText(sample, [
+      { startOffset: 0, endOffset: 25, newText: '' },
+    ]),
+    true
+  );
+
+  // Overlapping ranges return null and conservatively report a change
+  assert.equal(
+    applyOffsetEdits('abcdef', [
+      { startOffset: 1, endOffset: 4, newText: 'X' },
+      { startOffset: 2, endOffset: 5, newText: 'Y' },
+    ]),
+    null
+  );
+  assert.equal(
+    wouldOffsetEditsChangeText('abcdef', [
+      { startOffset: 1, endOffset: 4, newText: 'X' },
+      { startOffset: 2, endOffset: 5, newText: 'Y' },
+    ]),
+    true
+  );
 });

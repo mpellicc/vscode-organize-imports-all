@@ -195,3 +195,72 @@ export function formatFileStatusLine(options: FormatFileStatusLineOptions): stri
     }
   }
 }
+
+export interface OffsetTextEdit {
+  startOffset: number;
+  endOffset: number;
+  newText: string;
+}
+
+/**
+ * Applies non-overlapping offset-based edits in VS Code's tie-breaking order,
+ * returning `null` if any range is out of bounds or overlaps a preceding edit.
+ */
+export function applyOffsetEdits(
+  originalText: string,
+  edits: readonly OffsetTextEdit[]
+): string | null {
+  if (edits.length === 0) {
+    return originalText;
+  }
+
+  const ordered = edits
+    .map((edit, idx) => ({ edit, idx }))
+    .sort((a, b) => {
+      if (a.edit.startOffset !== b.edit.startOffset) {
+        return a.edit.startOffset - b.edit.startOffset;
+      }
+      if (a.edit.endOffset !== b.edit.endOffset) {
+        return a.edit.endOffset - b.edit.endOffset;
+      }
+      return a.idx - b.idx;
+    });
+
+  let cursor = 0;
+  const chunks: string[] = [];
+
+  for (const { edit } of ordered) {
+    if (
+      edit.startOffset < 0 ||
+      edit.endOffset < edit.startOffset ||
+      edit.endOffset > originalText.length ||
+      edit.startOffset < cursor
+    ) {
+      return null;
+    }
+
+    chunks.push(originalText.slice(cursor, edit.startOffset), edit.newText);
+    cursor = edit.endOffset;
+  }
+
+  chunks.push(originalText.slice(cursor));
+  return chunks.join('');
+}
+
+/**
+ * Returns `true` when applying `edits` produces different text than `originalText`,
+ * falling back conservatively to `true` when edits overlap.
+ */
+export function wouldOffsetEditsChangeText(
+  originalText: string,
+  edits: readonly OffsetTextEdit[]
+): boolean {
+  if (edits.length === 0) {
+    return false;
+  }
+  const next = applyOffsetEdits(originalText, edits);
+  if (next === null) {
+    return true;
+  }
+  return next !== originalText;
+}

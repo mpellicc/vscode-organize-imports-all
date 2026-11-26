@@ -6,7 +6,9 @@ import {
   DEFAULT_EXCLUDE_PATTERNS,
   DEFAULT_INCLUDE_GLOB,
   formatFileStatusLine,
+  OffsetTextEdit,
   resolveActionKindValue,
+  wouldOffsetEditsChangeText,
 } from './glob';
 
 const ITEM_RESOLVE_COUNT = 10;
@@ -33,6 +35,7 @@ export interface OrganizeDocumentResult {
   modified: boolean;
   languageId: string;
   wasDirty: boolean;
+  leftUnsaved: boolean;
   previewEdits: PreviewTextEditEntry[];
 }
 
@@ -47,7 +50,7 @@ function isMatchingActionKind(
   if (!action.kind) {
     return true;
   }
-  return targetKind.contains(action.kind) || action.kind.contains(targetKind);
+  return targetKind.contains(action.kind);
 }
 
 function delayWithCancellation(ms: number, token: vscode.CancellationToken): Promise<void> {
@@ -84,18 +87,52 @@ async function fetchCodeActions(
   );
 }
 
-function filterMeaningfulEdits(
+function extractEffectiveEditEntries(
   doc: vscode.TextDocument,
-  editUri: vscode.Uri,
-  textEdits: readonly vscode.TextEdit[]
-): vscode.TextEdit[] {
-  const isSameDocument = editUri.toString() === doc.uri.toString();
-  return textEdits.filter((te) => {
-    if (isSameDocument) {
-      return doc.getText(te.range) !== te.newText;
+  edit: vscode.WorkspaceEdit
+): PreviewTextEditEntry[] {
+  const entries: PreviewTextEditEntry[] = [];
+  const docUriString = doc.uri.toString();
+  let docText: string | undefined;
+
+  for (const [editUri, textEdits] of edit.entries()) {
+    if (editUri.toString() === docUriString) {
+      const nonTrivial = textEdits.filter((te) => doc.getText(te.range) !== te.newText);
+      if (nonTrivial.length === 0) {
+        continue;
+      }
+
+      docText ??= doc.getText();
+      const offsetEdits: OffsetTextEdit[] = nonTrivial.map((te) => ({
+        startOffset: doc.offsetAt(te.range.start),
+        endOffset: doc.offsetAt(te.range.end),
+        newText: te.newText,
+      }));
+      if (!wouldOffsetEditsChangeText(docText, offsetEdits)) {
+        continue;
+      }
+
+      entries.push({ uri: editUri, edits: nonTrivial });
+    } else {
+      const meaningful = textEdits.filter((te) => te.newText.length > 0 || !te.range.isEmpty);
+      if (meaningful.length > 0) {
+        entries.push({ uri: editUri, edits: meaningful });
+      }
     }
-    return te.newText.length > 0 || !te.range.isEmpty;
-  });
+  }
+
+  return entries;
+}
+
+function prioritizeActions(actions: readonly CodeActionResult[]): CodeActionResult[] {
+  return actions
+    .map((action, index) => ({
+      action,
+      index,
+      priority: !isCommandItem(action) && action.isPreferred === true ? 0 : 1,
+    }))
+    .sort((a, b) => a.priority - b.priority || a.index - b.index)
+    .map((entry) => entry.action);
 }
 
 /**
@@ -113,7 +150,8 @@ export async function organizeImportsInDocument(
 ): Promise<OrganizeDocumentResult> {
   const doc = await vscode.workspace.openTextDocument(uri);
   const wasDirty = doc.isDirty;
-  const versionBefore = doc.version;
+  const initialText = doc.getText();
+  const initialEol = doc.eol;
 
   let actions = await fetchCodeActions(doc, options.targetKind);
 
@@ -135,10 +173,11 @@ export async function organizeImportsInDocument(
     }
   }
 
+  const orderedActions = prioritizeActions(actions ?? []);
   const previewEdits: PreviewTextEditEntry[] = [];
 
   if (options.dryRun) {
-    for (const item of actions ?? []) {
+    for (const item of orderedActions) {
       if (options.token.isCancellationRequested) {
         break;
       }
@@ -148,11 +187,10 @@ export async function organizeImportsInDocument(
       if (!item.edit) {
         continue;
       }
-      for (const [editUri, textEdits] of item.edit.entries()) {
-        const meaningful = filterMeaningfulEdits(doc, editUri, textEdits);
-        if (meaningful.length > 0) {
-          previewEdits.push({ uri: editUri, edits: meaningful });
-        }
+      const effective = extractEffectiveEditEntries(doc, item.edit);
+      if (effective.length > 0) {
+        previewEdits.push(...effective);
+        break;
       }
     }
 
@@ -160,18 +198,19 @@ export async function organizeImportsInDocument(
       modified: previewEdits.length > 0,
       languageId: doc.languageId,
       wasDirty,
+      leftUnsaved: false,
       previewEdits,
     };
   }
 
-  for (const item of actions ?? []) {
+  for (const item of orderedActions) {
     if (options.token.isCancellationRequested) {
       break;
     }
 
     if (isCommandItem(item)) {
       await vscode.commands.executeCommand(item.command, ...(item.arguments ?? []));
-      continue;
+      break;
     }
 
     if (!isMatchingActionKind(item, options.targetKind)) {
@@ -179,7 +218,24 @@ export async function organizeImportsInDocument(
     }
 
     if (item.edit) {
-      await vscode.workspace.applyEdit(item.edit);
+      const effective = extractEffectiveEditEntries(doc, item.edit);
+      if (effective.length === 0) {
+        continue;
+      }
+
+      const filteredEdit = new vscode.WorkspaceEdit();
+      for (const entry of effective) {
+        filteredEdit.set(entry.uri, entry.edits);
+      }
+      await vscode.workspace.applyEdit(filteredEdit);
+
+      if (item.command) {
+        await vscode.commands.executeCommand(
+          item.command.command,
+          ...(item.command.arguments ?? [])
+        );
+      }
+      break;
     }
 
     if (item.command) {
@@ -187,15 +243,20 @@ export async function organizeImportsInDocument(
         item.command.command,
         ...(item.command.arguments ?? [])
       );
+      break;
     }
   }
 
-  const modified = doc.version !== versionBefore;
-  if (modified && options.saveAfterOrganize && !wasDirty && doc.isDirty) {
+  // Save before checking whether text changed so formatOnSave / codeActionsOnSave
+  // that revert purely stylistic edits do not inflate the modified file count.
+  if (options.saveAfterOrganize && !wasDirty && doc.isDirty) {
     await doc.save();
   }
 
-  return { modified, languageId: doc.languageId, wasDirty, previewEdits: [] };
+  const modified = doc.getText() !== initialText || doc.eol !== initialEol;
+  const leftUnsaved = modified && doc.isDirty;
+
+  return { modified, languageId: doc.languageId, wasDirty, leftUnsaved, previewEdits: [] };
 }
 
 async function applyGitIgnoreFilter(
@@ -340,7 +401,7 @@ async function discoverTargetFiles(
 }
 
 function getHeaderTitle(scope: OrganizeScope, dryRun: boolean): string {
-  const suffix = dryRun ? ' [DRY RUN]' : '';
+  const suffix = dryRun ? ' (dry-run)' : '';
   switch (scope.kind) {
     case 'folders':
       return `Organize imports in folder${suffix}`;
@@ -540,6 +601,7 @@ export async function runOrganizeImports(
       const previewEdits: PreviewTextEditEntry[] = [];
       const cleanDocUris = new Set<string>();
       let modifiedCount = 0;
+      let unsavedModifiedCount = 0;
       let unchangedCount = 0;
       let processedCount = 0;
       let errorCount = 0;
@@ -586,6 +648,9 @@ export async function runOrganizeImports(
                 })
               );
             } else {
+              if (result.leftUnsaved) {
+                unsavedModifiedCount++;
+              }
               output.appendLine(
                 formatFileStatusLine({
                   index: i + 1,
@@ -648,6 +713,11 @@ export async function runOrganizeImports(
         output.appendLine(
           `✔ Completed in ${elapsedSec}s — ${modifiedCount} modified, ${unchangedCount} unchanged, ${errorCount} error(s) (${processedCount}/${files.length} processed)`
         );
+        if (unsavedModifiedCount > 0) {
+          output.appendLine(
+            `ℹ Note: ${unsavedModifiedCount} modified file(s) remain unsaved in the editor (had prior unsaved changes or saveAfterOrganize is disabled).`
+          );
+        }
       }
 
       return {

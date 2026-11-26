@@ -1,7 +1,7 @@
 # Organize Imports on All Files
 
 [![Release](https://github.com/mpellicc/vscode-organize-imports-all/actions/workflows/release.yml/badge.svg)](https://github.com/mpellicc/vscode-organize-imports-all/actions/workflows/release.yml)
-[![Visual Studio Marketplace](https://img.shields.io/visual-studio-marketplace/v/mpellicc.organize-imports-all?label=VS%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=mpellicc.organize-imports-all)
+[![Visual Studio Marketplace](https://vsmarketplacebadges.dev/version-short/mpellicc.organize-imports-all.svg)](https://marketplace.visualstudio.com/items?itemName=mpellicc.organize-imports-all)
 
 A VS Code extension by **[mpellicc](https://github.com/mpellicc)** that runs VS Code's `source.organizeImports` (or `source.sortImports` / `source.removeUnusedImports`) code action across your project with `.gitignore` support and colorized per-file status output.
 
@@ -12,7 +12,7 @@ Open the Command Palette (`Cmd+Shift+P` on macOS, `Ctrl+Shift+P` on Windows/Linu
 - **`Organize imports on all files`** — Scans all matching code files in the workspace.
 - **`Organize imports in folder`** — Right-click one or more folders in the Explorer sidebar (or pick folders via dialog from the Command Palette).
 - **`Organize imports on Git changed files`** — Runs only on staged, unstaged modified, and untracked (non-ignored) files in the current Git working tree.
-- **`Organize imports on all files (Dry Run)`** — Scans without modifying or saving files, prints `~ WOULD MODIFY` lines, and lets you choose **`Open Refactor Preview`** (VS Code's native diff preview with per-file checkboxes) or **`Apply All`**.
+- **`Organize imports on all files (dry-run)`** — Scans without modifying or saving files, prints `~ WOULD MODIFY` lines, and lets you choose **`Open Refactor Preview`** (VS Code's native diff preview with per-file checkboxes) or **`Apply All`**.
 
 ## Settings
 
