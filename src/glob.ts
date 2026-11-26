@@ -20,10 +20,32 @@ export const DEFAULT_EXCLUDE_PATTERNS: readonly string[] = [
 
 export type ActionMode = 'organizeImports' | 'sortImports' | 'removeUnusedImports';
 
+export type OutputVerbosity = 'all' | 'changesOnly';
+
 export interface ResolvedActionMode {
   mode: ActionMode;
   kindValue: string;
   label: string;
+}
+
+/**
+ * Resolves the configured output verbosity to `'all'` or `'changesOnly'`.
+ */
+export function resolveOutputVerbosity(value: string | undefined): OutputVerbosity {
+  return value === 'changesOnly' ? 'changesOnly' : 'all';
+}
+
+/**
+ * Returns whether a per-file status line should be written for the given verbosity.
+ */
+export function shouldLogFileStatus(
+  status: FileProcessStatus,
+  verbosity: OutputVerbosity
+): boolean {
+  if (verbosity === 'all') {
+    return true;
+  }
+  return status !== 'unchanged' && status !== 'no-action';
 }
 
 /**
@@ -129,9 +151,27 @@ export interface BuildExcludeGlobOptions {
 }
 
 /**
- * Combines configured exclusions into a VS Code `findFiles` exclude glob.
+ * Returns `true` when an exclude setting contains conditional `{ when: ... }`
+ * (or other non-boolean truthy) entries whose evaluation depends on sibling files.
  */
-export function buildExcludeGlob(options: BuildExcludeGlobOptions): string | undefined {
+export function hasConditionalExcludeRules(
+  setting: Record<string, unknown> | undefined
+): boolean {
+  if (!setting) {
+    return false;
+  }
+  for (const value of Object.values(setting)) {
+    if (value !== null && typeof value === 'object') {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Collects deduplicated, expanded exclude glob patterns for the given options.
+ */
+export function collectExcludePatterns(options: BuildExcludeGlobOptions): string[] {
   const rawPatterns: string[] = [...options.customExcludes];
   const folderPatterns = normalizeIgnoredFolderPatterns(options.ignoredFolders ?? []);
 
@@ -152,7 +192,14 @@ export function buildExcludeGlob(options: BuildExcludeGlobOptions): string | und
     uniquePatterns.add(pattern);
   }
 
-  const patterns = Array.from(uniquePatterns);
+  return Array.from(uniquePatterns);
+}
+
+/**
+ * Combines configured exclusions into a VS Code `findFiles` exclude glob.
+ */
+export function buildExcludeGlob(options: BuildExcludeGlobOptions): string | undefined {
+  const patterns = collectExcludePatterns(options);
   if (patterns.length === 0) {
     return undefined;
   }
@@ -162,7 +209,14 @@ export function buildExcludeGlob(options: BuildExcludeGlobOptions): string | und
   return `{${patterns.join(',')}}`;
 }
 
-export type FileProcessStatus = 'modified' | 'would-modify' | 'unchanged' | 'error';
+export type FileProcessStatus =
+  | 'modified'
+  | 'would-modify'
+  | 'unchanged'
+  | 'no-action'
+  | 'command-only'
+  | 'save-failed'
+  | 'error';
 
 export interface FormatFileStatusLineOptions {
   index: number;
@@ -187,6 +241,20 @@ export function formatFileStatusLine(options: FormatFileStatusLineOptions): stri
       return `${counter} ~ WOULD MODIFY  ${options.relativePath}`;
     case 'unchanged':
       return `${counter} · UNCHANGED     ${options.relativePath}`;
+    case 'no-action':
+      return `${counter} ○ NO ACTION     ${options.relativePath}`;
+    case 'command-only': {
+      const sanitizedMsg = options.errorMessage?.replace(/\s+/g, ' ').trim();
+      return `${counter} ▸ COMMAND ONLY  ${options.relativePath}${
+        sanitizedMsg ? ` — ${sanitizedMsg}` : ''
+      }`;
+    }
+    case 'save-failed': {
+      const sanitizedMsg = options.errorMessage?.replace(/\s+/g, ' ').trim();
+      return `${counter} ⚠ SAVE FAILED   ${options.relativePath}${
+        sanitizedMsg ? ` — ${sanitizedMsg}` : ''
+      }`;
+    }
     case 'error': {
       const sanitizedMsg = options.errorMessage?.replace(/\s+/g, ' ').trim();
       return `${counter} ✖ ERROR         ${options.relativePath}${

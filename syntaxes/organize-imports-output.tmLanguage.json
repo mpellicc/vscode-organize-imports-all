@@ -25,6 +25,30 @@
       }
     },
     {
+      "match": "^(\\[\\d+/\\d+\\]\\s+○ NO ACTION\\s+.+)$",
+      "captures": {
+        "1": { "name": "comment.line.organize-imports" }
+      }
+    },
+    {
+      "match": "^(\\[\\d+/\\d+\\])\\s+(▸ COMMAND ONLY)\\s+([^—]+?)(?:\\s+(—\\s*.+))?$",
+      "captures": {
+        "1": { "name": "constant.numeric.organize-imports" },
+        "2": { "name": "markup.changed.organize-imports strong" },
+        "3": { "name": "markup.changed.organize-imports" },
+        "4": { "name": "comment.line.organize-imports" }
+      }
+    },
+    {
+      "match": "^(\\[\\d+/\\d+\\])\\s+(⚠ SAVE FAILED)\\s+([^—]+?)(?:\\s+(—\\s*.+))?$",
+      "captures": {
+        "1": { "name": "constant.numeric.organize-imports" },
+        "2": { "name": "markup.deleted.organize-imports strong" },
+        "3": { "name": "markup.changed.organize-imports" },
+        "4": { "name": "invalid.illegal.organize-imports" }
+      }
+    },
+    {
       "match": "^(\\[\\d+/\\d+\\])\\s+(✖ ERROR)\\s+([^—]+?)(?:\\s+(—\\s*.+))?$",
       "captures": {
         "1": { "name": "constant.numeric.organize-imports" },
@@ -70,8 +94,20 @@
       "name": "markup.inserted.organize-imports strong"
     },
     {
-      "match": "^✔ Applied changes to \\d+ file\\(s\\)\\.",
+      "match": "^✔ Applied (?:changes to \\d+(?: of \\d+ previewed)? file\\(s\\)|previewed changes)[^.]*\\.",
       "name": "markup.inserted.organize-imports strong"
+    },
+    {
+      "match": "^✖ Failed to apply changes[^.]*\\.",
+      "name": "markup.deleted.organize-imports strong"
+    },
+    {
+      "match": "^⚠ (?:Skipped|Failed to save|Warning:).+$",
+      "name": "markup.changed.organize-imports"
+    },
+    {
+      "match": "^ℹ (?:Note:|No previewed|Refactor Preview).+$",
+      "name": "comment.line.organize-imports"
     },
     {
       "match": "^ℹ Dry run in [0-9.]+s",
@@ -100,6 +136,18 @@
     {
       "match": "\\b\\d+\\s+unchanged\\b",
       "name": "comment.line.organize-imports"
+    },
+    {
+      "match": "\\b\\d+\\s+no action\\b",
+      "name": "comment.line.organize-imports"
+    },
+    {
+      "match": "\\b[1-9]\\d*\\s+command-only\\b",
+      "name": "markup.changed.organize-imports strong"
+    },
+    {
+      "match": "\\b[1-9]\\d*\\s+save failed\\b",
+      "name": "markup.deleted.organize-imports strong"
     },
     {
       "match": "\\b[1-9]\\d*\\s+error\\(s\\)",

@@ -9,5 +9,7 @@ images/*-128.png
 images/*-512.png
 tsconfig.json
 **/*.map
+*.vsix
+ROADMAP-RESEARCH.md
 .gitignore
 .nvmrc

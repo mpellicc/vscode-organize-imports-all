@@ -7,7 +7,7 @@
     "name": "mpellicc",
     "url": "https://github.com/mpellicc"
   },
-  "version": "0.3.2",
+  "version": "1.0.0",
   "license": "MIT",
   "icon": "images/organize-imports-all.png",
   "repository": {
@@ -30,7 +30,7 @@
     "workspace"
   ],
   "engines": {
-    "vscode": "^1.146.0"
+    "vscode": "^1.80.0"
   },
   "categories": [
     "Formatters",
@@ -61,20 +61,56 @@
         "title": "Organize imports in folder"
       },
       {
+        "command": "organizeImportsAll.runOnFiles",
+        "title": "Organize imports on selected files"
+      },
+      {
         "command": "organizeImportsAll.runOnGitChanged",
         "title": "Organize imports on Git changed files"
       },
       {
         "command": "organizeImportsAll.dryRun",
         "title": "Organize imports on all files (dry-run)"
+      },
+      {
+        "command": "organizeImportsAll.preview",
+        "title": "Organize imports: Preview (pick scope & action)"
+      },
+      {
+        "command": "organizeImportsAll.previewGitBranch",
+        "title": "Organize imports on Git branch (preview)"
+      },
+      {
+        "command": "organizeImportsAll.runWithOptions",
+        "title": "Organize imports: Run (pick scope & action)"
+      },
+      {
+        "command": "organizeImportsAll.previewSelection",
+        "title": "Organize imports (preview)"
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "organizeImportsAll.previewSelection",
+          "when": "false"
+        }
+      ],
       "explorer/context": [
         {
           "command": "organizeImportsAll.runInFolder",
           "when": "explorerResourceIsFolder",
           "group": "7_modification@99"
+        },
+        {
+          "command": "organizeImportsAll.runOnFiles",
+          "when": "resourceSet && !explorerResourceIsFolder",
+          "group": "7_modification@99"
+        },
+        {
+          "command": "organizeImportsAll.previewSelection",
+          "when": "resourceSet",
+          "group": "7_modification@100"
         }
       ]
     },
@@ -151,21 +187,34 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically open the 'Organize Imports on All Files' Output panel when running the command."
+        },
+        "organizeImportsAll.outputVerbosity": {
+          "type": "string",
+          "enum": [
+            "all",
+            "changesOnly"
+          ],
+          "enumDescriptions": [
+            "Log every scanned file in the Output panel, including unchanged and no-action files.",
+            "Log only modified (or would-modify) files, command-only actions, save failures, and errors. Run headers and summaries are always shown."
+          ],
+          "default": "all",
+          "description": "Controls which per-file status lines are written to the Output panel."
         }
       }
     }
   },
   "scripts": {
     "check-types": "tsc --noEmit",
-    "compile": "npm run check-types && esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
-    "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
-    "vscode:prepublish": "npm run check-types && esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
+    "compile": "npm run check-types && esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node16.17 --sourcemap",
+    "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node16.17 --sourcemap --watch",
+    "vscode:prepublish": "npm run check-types && esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node16.17 --minify",
     "test": "esbuild test/glob.test.ts test/git.test.ts --bundle --outdir=dist-test --out-extension:.js=.cjs --platform=node --format=cjs && node --test dist-test/glob.test.cjs dist-test/git.test.cjs",
     "package": "vsce package --no-dependencies"
   },
   "devDependencies": {
     "@types/node": "^26.6.11",
-    "@types/vscode": "^1.146.0",
+    "@types/vscode": "1.80.0",
     "@vscode/vsce": "^4.1.1",
     "esbuild": "^0.28.2",
     "typescript": "^7.0.2"
