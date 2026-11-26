@@ -1,0 +1,10 @@
+src/**
+test/**
+dist-test/**
+node_modules/**
+.vscode/**
+.github/**
+tsconfig.json
+**/*.map
+.gitignore
+.nvmrc

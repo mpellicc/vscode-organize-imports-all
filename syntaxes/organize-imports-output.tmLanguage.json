@@ -1,0 +1,113 @@
+{
+  "name": "Organize Imports Output",
+  "scopeName": "text.organize-imports-output",
+  "patterns": [
+    {
+      "match": "^(\\[\\d+/\\d+\\])\\s+(✔ MODIFIED)\\s+(.+)$",
+      "captures": {
+        "1": { "name": "constant.numeric.organize-imports" },
+        "2": { "name": "markup.inserted.organize-imports strong" },
+        "3": { "name": "markup.inserted.organize-imports" }
+      }
+    },
+    {
+      "match": "^(\\[\\d+/\\d+\\])\\s+(~ WOULD MODIFY)\\s+(.+)$",
+      "captures": {
+        "1": { "name": "constant.numeric.organize-imports" },
+        "2": { "name": "markup.changed.organize-imports strong" },
+        "3": { "name": "markup.changed.organize-imports" }
+      }
+    },
+    {
+      "match": "^(\\[\\d+/\\d+\\]\\s+· UNCHANGED\\s+.+)$",
+      "captures": {
+        "1": { "name": "comment.line.organize-imports" }
+      }
+    },
+    {
+      "match": "^(\\[\\d+/\\d+\\])\\s+(✖ ERROR)\\s+([^—]+?)(?:\\s+(—\\s*.+))?$",
+      "captures": {
+        "1": { "name": "constant.numeric.organize-imports" },
+        "2": { "name": "markup.deleted.organize-imports strong" },
+        "3": { "name": "markup.deleted.organize-imports" },
+        "4": { "name": "invalid.illegal.organize-imports" }
+      }
+    },
+    {
+      "match": "^─+$",
+      "name": "comment.block.organize-imports"
+    },
+    {
+      "match": "^(▶ Organize imports[^—]*)(.*)$",
+      "captures": {
+        "1": { "name": "keyword.control.organize-imports strong" },
+        "2": { "name": "constant.language.organize-imports" }
+      }
+    },
+    {
+      "match": "^(Ignored folders:)(.*)$",
+      "captures": {
+        "1": { "name": "comment.line.organize-imports" },
+        "2": { "name": "string.unquoted.organize-imports" }
+      }
+    },
+    {
+      "match": "^(Skipped by \\.gitignore:)(.*)$",
+      "captures": {
+        "1": { "name": "comment.line.organize-imports" },
+        "2": { "name": "constant.numeric.organize-imports" }
+      }
+    },
+    {
+      "match": "^(Mode:)(.*)$",
+      "captures": {
+        "1": { "name": "comment.line.organize-imports" },
+        "2": { "name": "entity.name.type.organize-imports" }
+      }
+    },
+    {
+      "match": "^✔ Completed in [0-9.]+s",
+      "name": "markup.inserted.organize-imports strong"
+    },
+    {
+      "match": "^✔ Applied changes to \\d+ file\\(s\\)\\.",
+      "name": "markup.inserted.organize-imports strong"
+    },
+    {
+      "match": "^ℹ Dry run in [0-9.]+s",
+      "name": "markup.changed.organize-imports strong"
+    },
+    {
+      "match": "^⚠ Cancelled after [0-9.]+s",
+      "name": "markup.changed.organize-imports strong"
+    },
+    {
+      "match": "\\b[1-9]\\d*\\s+modified\\b",
+      "name": "markup.inserted.organize-imports strong"
+    },
+    {
+      "match": "\\b0\\s+modified\\b",
+      "name": "comment.line.organize-imports"
+    },
+    {
+      "match": "\\b[1-9]\\d*\\s+would be modified\\b",
+      "name": "markup.changed.organize-imports strong"
+    },
+    {
+      "match": "\\b0\\s+would be modified\\b",
+      "name": "comment.line.organize-imports"
+    },
+    {
+      "match": "\\b\\d+\\s+unchanged\\b",
+      "name": "comment.line.organize-imports"
+    },
+    {
+      "match": "\\b[1-9]\\d*\\s+error\\(s\\)",
+      "name": "markup.deleted.organize-imports strong"
+    },
+    {
+      "match": "\\b0\\s+error\\(s\\)",
+      "name": "comment.line.organize-imports"
+    }
+  ]
+}

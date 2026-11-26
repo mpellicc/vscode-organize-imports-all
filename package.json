@@ -1,0 +1,173 @@
+{
+  "name": "organize-imports-all",
+  "displayName": "Organize Imports on All Files",
+  "description": "Run VS Code's Organize Imports action across all code files in your workspace.",
+  "publisher": "mpellicc",
+  "author": {
+    "name": "mpellicc",
+    "url": "https://github.com/mpellicc"
+  },
+  "version": "0.3.0",
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mpellicc/vscode-organize-imports-all.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mpellicc/vscode-organize-imports-all/issues"
+  },
+  "homepage": "https://github.com/mpellicc/vscode-organize-imports-all#readme",
+  "keywords": [
+    "organize imports",
+    "sort imports",
+    "unused imports",
+    "imports",
+    "typescript",
+    "javascript",
+    "python",
+    "refactor",
+    "workspace"
+  ],
+  "engines": {
+    "vscode": "^1.146.0"
+  },
+  "categories": [
+    "Formatters",
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "organize-imports-output"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "organize-imports-output",
+        "scopeName": "text.organize-imports-output",
+        "path": "./syntaxes/organize-imports-output.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "organizeImportsAll.run",
+        "title": "Organize imports on all files"
+      },
+      {
+        "command": "organizeImportsAll.runInFolder",
+        "title": "Organize imports in folder"
+      },
+      {
+        "command": "organizeImportsAll.runOnGitChanged",
+        "title": "Organize imports on Git changed files"
+      },
+      {
+        "command": "organizeImportsAll.dryRun",
+        "title": "Organize imports on all files (Dry Run)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "organizeImportsAll.runInFolder",
+          "when": "explorerResourceIsFolder",
+          "group": "7_modification@99"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Organize Imports on All Files",
+      "properties": {
+        "organizeImportsAll.actionMode": {
+          "type": "string",
+          "enum": [
+            "organizeImports",
+            "sortImports",
+            "removeUnusedImports"
+          ],
+          "enumDescriptions": [
+            "Sort imports and remove unused imports (source.organizeImports).",
+            "Sort and combine imports without removing unused imports (source.sortImports).",
+            "Only remove unused imports without reordering (source.removeUnusedImports)."
+          ],
+          "default": "organizeImports",
+          "description": "Code action mode to run across files."
+        },
+        "organizeImportsAll.useGitIgnore": {
+          "type": "boolean",
+          "default": true,
+          "description": "Skip files ignored by .gitignore when running inside a Git repository."
+        },
+        "organizeImportsAll.include": {
+          "type": "string",
+          "default": "**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,py,pyi,go,java,kt,kts,cs,rs,dart,swift,php,rb,scala,vue,svelte,astro}",
+          "description": "Glob pattern of workspace files to scan when organizing imports."
+        },
+        "organizeImportsAll.exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "**/node_modules/**",
+            "**/.git/**",
+            "**/dist/**",
+            "**/build/**",
+            "**/out/**",
+            "**/.next/**",
+            "**/.nuxt/**",
+            "**/.svelte-kit/**",
+            "**/coverage/**",
+            "**/.venv/**",
+            "**/venv/**",
+            "**/__pycache__/**",
+            "**/target/**",
+            "**/vendor/**"
+          ],
+          "description": "Glob patterns of paths to exclude when organizing imports."
+        },
+        "organizeImportsAll.useWorkspaceExcludes": {
+          "type": "boolean",
+          "default": true,
+          "description": "Merge patterns set to true in VS Code's files.exclude and search.exclude settings."
+        },
+        "organizeImportsAll.saveAfterOrganize": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically save files that were clean before running and modified by Organize Imports."
+        },
+        "organizeImportsAll.ignoredFolders": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Folder names or workspace-relative folder paths to ignore (e.g. [\"generated\", \"src/legacy\"]). Merged on top of default excludes."
+        },
+        "organizeImportsAll.showOutputOnRun": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically open the 'Organize Imports on All Files' Output panel when running the command."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "compile": "npm run check-types && esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+    "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
+    "vscode:prepublish": "npm run check-types && esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
+    "test": "esbuild test/glob.test.ts test/git.test.ts --bundle --outdir=dist-test --out-extension:.js=.cjs --platform=node --format=cjs && node --test dist-test/glob.test.cjs dist-test/git.test.cjs",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.11",
+    "@types/vscode": "^1.146.0",
+    "@vscode/vsce": "^4.1.1",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}

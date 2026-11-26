@@ -1,0 +1,151 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (!startsWith(github.event.head_commit.message, 'chore(release):') &&
+       !contains(github.event.head_commit.message, '[skip release]'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      should_publish: ${{ steps.version.outputs.should_publish }}
+      version: ${{ steps.version.outputs.version }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile & typecheck
+        run: npm run compile
+
+      - name: Run tests
+        run: npm test
+
+      - name: Version, tag & push
+        id: version
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          PKG_VERSION=$(node -p "require('./package.json').version")
+
+          if ! git rev-parse -q --verify "refs/tags/v${PKG_VERSION}" >/dev/null 2>&1; then
+            # Initial release or manual version bump in package.json
+            VERSION="${PKG_VERSION}"
+            git tag -a "v${VERSION}" -m "Release v${VERSION}"
+            git push origin "v${VERSION}"
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "tag_name=v${VERSION}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          COMMITS_SINCE_TAG=$(git rev-list "v${PKG_VERSION}..HEAD" --count)
+          if [ "$COMMITS_SINCE_TAG" -eq 0 ]; then
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "should_publish=true" >> "$GITHUB_OUTPUT"
+              echo "version=${PKG_VERSION}" >> "$GITHUB_OUTPUT"
+              echo "tag_name=v${PKG_VERSION}" >> "$GITHUB_OUTPUT"
+            else
+              echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          LOG=$(git log "v${PKG_VERSION}..HEAD" --pretty=format:"%s%n%b")
+          if echo "$LOG" | grep -Eq '(BREAKING CHANGE|^[a-zA-Z]+(\([^)]+\))?!:)'; then
+            BUMP="major"
+          elif echo "$LOG" | grep -Eq '^feat(\([^)]+\))?:'; then
+            BUMP="minor"
+          else
+            BUMP="patch"
+          fi
+
+          npm version "$BUMP" --no-git-tag-version
+          VERSION=$(node -p "require('./package.json').version")
+          git add package.json package-lock.json
+          git commit -m "chore(release): v${VERSION} [skip ci]"
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+          git push origin HEAD:main --follow-tags
+
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Package & create GitHub Release
+        if: steps.version.outputs.should_publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          npm run package
+          VSIX="organize-imports-all-${VERSION}.vsix"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" "$VSIX" --title "$TAG" --generate-notes
+          fi
+
+  publish-marketplace:
+    needs: release
+    if: needs.release.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release.outputs.tag_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies & package VSIX
+        run: |
+          npm ci
+          npm run package
+
+      - name: Publish to Visual Studio Marketplace
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          set -euo pipefail
+          VSIX="organize-imports-all-${VERSION}.vsix"
+          if [ -n "${VSCE_PAT:-}" ]; then
+            npx vsce publish --no-dependencies --skip-duplicate --packagePath "$VSIX" --pat "$VSCE_PAT"
+          else
+            echo "::notice::VSCE_PAT secret not set; publishing via OIDC Trusted Publishing (--oidc)..."
+            if ! npx vsce publish --no-dependencies --skip-duplicate --packagePath "$VSIX" --oidc; then
+              echo "::error::Marketplace publish failed. Ensure publisher 'mpellicc' is created at https://marketplace.visualstudio.com/manage and configure either Trusted Publishing (OIDC) for mpellicc/vscode-organize-imports-all (.github/workflows/release.yml) or a VSCE_PAT repository secret, then re-run this job."
+              exit 1
+            fi
+          fi
