@@ -9,7 +9,7 @@
   },
   "version": "0.3.0",
   "license": "MIT",
-  "icon": "images/icon.png",
+  "icon": "images/organize-imports-all.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/mpellicc/vscode-organize-imports-all.git"

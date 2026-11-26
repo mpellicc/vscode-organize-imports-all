@@ -4,6 +4,9 @@ dist-test/**
 node_modules/**
 .vscode/**
 .github/**
+images/*.svg
+images/*-128.png
+images/*-512.png
 tsconfig.json
 **/*.map
 .gitignore
